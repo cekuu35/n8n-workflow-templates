@@ -1,0 +1,59 @@
+{
+  "name": "01 — Müşteri Bulma + Otomatik E-posta (OSM)",
+  "nodes": [
+    {
+      "parameters": {"rule": {"interval": [{"field": "weeks", "weeksInterval": 1}]}},
+      "id": "a1", "name": "Haftalık Tetik", "type": "n8n-nodes-base.scheduleTrigger", "typeVersion": 1.2, "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://overpass-api.de/api/interpreter",
+        "authentication": "none",
+        "sendBody": true,
+        "contentType": "form-urlencoded",
+        "bodyParameters": {"parameters": [{"name": "data", "value": "[out:json][timeout:90];area[\"name\"=\"Kadıköy\"][\"admin_level\"~\"^(7|8)$\"]->.a;(node[\"amenity\"~\"cafe|restaurant|bar\"][\"name\"](area.a);way[\"amenity\"~\"cafe|restaurant|bar\"][\"name\"](area.a););out center tags;"}]},
+        "options": {"timeout": 120000}
+      },
+      "id": "a2", "name": "OSM Sorgu", "type": "n8n-nodes-base.httpRequest", "typeVersion": 4.2, "position": [220, 0]
+    },
+    {
+      "parameters": {"jsCode": "const elems = $input.first().json.elements || [];\nconst leads = elems.filter(e => e.tags && e.tags.name).map(e => ({ json: {\n  isletme: e.tags.name,\n  telefon: (e.tags.phone || e.tags['contact:phone'] || '').trim(),\n  website: (e.tags.website || e.tags['contact:website'] || '').trim(),\n  adres: [(e.tags['addr:street'] || ''), (e.tags['addr:housenumber'] || '')].filter(Boolean).join(' '),\n  kaynak: 'OSM'\n}})).filter(l => l.json.telefon || l.json.website);\nif (!leads.length) throw new Error('Eşleşen kayıt yok — bölge adını/tipleri kontrol et');\nreturn leads;"},
+      "id": "a3", "name": "Lead Çıkar", "type": "n8n-nodes-base.code", "typeVersion": 2, "position": [440, 0]
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {"__rl": true, "value": "BURAYA_GOOGLE_SHEET_ID", "mode": "id"},
+        "sheetName": {"__rl": true, "value": "Sheet1", "mode": "name"},
+        "columns": {"mappingMode": "defineBelow", "value": {
+          "isletme": "={{ $json.isletme }}",
+          "telefon": "={{ $json.telefon }}",
+          "website": "={{ $json.website }}",
+          "adres": "={{ $json.adres }}"
+        }, "matchingColumns": [], "schema": []},
+        "options": {}
+      },
+      "id": "a4", "name": "Google Sheets'e Yaz", "type": "n8n-nodes-base.googleSheets", "typeVersion": 4.5, "position": [660, -100], "credentials": {"googleSheetsOAuth2Api": {"id": null, "name": "Google hesabını bağla"}}
+    },
+    {
+      "parameters": {
+        "resource": "message", "operation": "send",
+        "toUser": {"__rl": true, "value": "musteri@firma.com", "mode": "name"},
+        "subject": "Size özel: yeni müşterileriniz",
+        "emailType": "text",
+        "message": "=Merhaba,\n\nSon 7 günde hazırladığımız müşteri listesini ekte bulabilirsiniz: {{ $json.isletme }} ({{ $json.telefon }}).\n\nİyi günler.",
+        "options": {}
+      },
+      "id": "a5", "name": "E-posta Gönder", "type": "n8n-nodes-base.gmail", "typeVersion": 2.1, "position": [660, 100], "credentials": {"gmailOAuth2": {"id": null, "name": "Gmail hesabını bağla"}}
+    }
+  ],
+  "connections": {
+    "Haftalık Tetik": {"main": [[{"node": "OSM Sorgu", "type": "main", "index": 0}]]},
+    "OSM Sorgu": {"main": [[{"node": "Lead Çıkar", "type": "main", "index": 0}]]},
+    "Lead Çıkar": {"main": [[{"node": "Google Sheets'e Yaz", "type": "main", "index": 0}, {"node": "E-posta Gönder", "type": "main", "index": 0}]]}
+  },
+  "settings": {"executionOrder": "v1"},
+  "staticData": null,
+  "pinData": {}
+}

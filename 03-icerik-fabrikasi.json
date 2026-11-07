@@ -1,0 +1,71 @@
+{
+  "name": "03 — İçerik Fabrikası (RSS → AI → çok kanal)",
+  "nodes": [
+    {
+      "parameters": {"feed": {"url": "https://rss.app/feeds/BURAYA_RSS_URL.xml"}, "options": {}},
+      "id": "c1",
+      "name": "RSS Kaynağı",
+      "type": "n8n-nodes-base.rssFeedRead",
+      "typeVersion": 1.1,
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={ \"contents\": [ { \"parts\": [ { \"text\": \"=Basit ve akıcı Türkçe bir sosyal medya gönderisi yaz (120 kelime, başlık + 3 hashtag). Konu: {{ $json.title }} Özet: {{ $json.contentSnippet }}\" } ] } ] }",
+        "options": {}
+      },
+      "id": "c2",
+      "name": "Gemini ile Üret",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [220, 0],
+      "credentials": {"httpHeaderAuth": {"id": null, "name": "Gemini API Key (x-goog-api-key)"}}
+    },
+    {
+      "parameters": {"jsCode": "const r = $input.first().json; const text = r?.candidates?.[0]?.content?.parts?.[0]?.text || ''; if (!text) throw new Error('Gemini yanıtı boş'); return [{ json: { kaynak: $('RSS Kaynağı').first().json.title || 'RSS', icerik: text, tarih: new Date().toISOString() } }];"},
+      "id": "c3",
+      "name": "Metni Ayıkla",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [440, 0]
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {"__rl": true, "value": "BURAYA_GOOGLE_SHEET_ID", "mode": "id"},
+        "sheetName": {"__rl": true, "value": "Sheet1", "mode": "name"},
+        "columns": {"mappingMode": "defineBelow", "value": {"tarih": "={{ $json.tarih }}", "kaynak": "={{ $json.kaynak }}", "icerik": "={{ $json.icerik }}"}, "matchingColumns": [], "schema": []},
+        "options": {}
+      },
+      "id": "c4",
+      "name": "Sheets Arşiv",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [660, -80],
+      "credentials": {"googleSheetsOAuth2Api": {"id": null, "name": "Google hesabını bağla"}}
+    },
+    {
+      "parameters": {"chatId": "BURAYA_TELEGRAM_CHAT_ID", "additionalFields": {"text": "=Yeni içerik hazır:{{ $json.icerik }}"}},
+      "id": "c5",
+      "name": "Telegram Kanal",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [660, 80],
+      "credentials": {"telegramApi": {"id": null, "name": "Telegram bot bağla"}}
+    }
+  ],
+  "connections": {
+    "RSS Kaynağı": {"main": [[{"node": "Gemini ile Üret", "type": "main", "index": 0}]]},
+    "Gemini ile Üret": {"main": [[{"node": "Metni Ayıkla", "type": "main", "index": 0}]]},
+    "Metni Ayıkla": {"main": [[{"node": "Sheets Arşiv", "type": "main", "index": 0}, {"node": "Telegram Kanal", "type": "main", "index": 0}]]}
+  },
+  "settings": {"executionOrder": "v1"},
+  "staticData": null,
+  "pinData": {}
+}

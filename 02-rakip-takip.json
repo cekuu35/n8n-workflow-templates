@@ -1,0 +1,52 @@
+{
+  "name": "02 — Rakip Site Takip + Anlık Bildirim",
+  "nodes": [
+    {
+      "parameters": {"rule": {"interval": [{"field": "days", "daysInterval": 1}]}},
+      "id": "b1", "name": "Her Gün 09:00", "type": "n8n-nodes-base.scheduleTrigger", "typeVersion": 1.2, "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "url": "https://www.rakipfirma.com",
+        "options": {"response": {"response": {"responseFormat": "text"}}}
+      },
+      "id": "b2", "name": "Rakip Sitesi", "type": "n8n-nodes-base.httpRequest", "typeVersion": 4.2, "position": [220, 0]
+    },
+    {
+      "parameters": {"jsCode": "const html = String($input.first().json || '');\nconst crypto = require('crypto');\nconst hash = crypto.createHash('sha256').update(html).digest('hex').slice(0, 16);\nconst prev = $getWorkflowStaticData('global');\nconst changed = prev.lastHash && prev.lastHash !== hash;\n$getWorkflowStaticData('global').lastHash = hash;\nreturn [{ json: { hash, changed: !!changed, onceki: prev.lastHash || 'yok', uzunluk: html.length } }];"},
+      "id": "b3", "name": "Değişim Kontrol", "type": "n8n-nodes-base.code", "typeVersion": 2, "position": [440, 0]
+    },
+    {
+      "parameters": {"conditions": {
+        "options": {"caseSensitive": true, "leftValue": "", "typeValidation": "strict"},
+        "conditions": [{"id": "c1", "leftValue": "={{ $json.changed }}", "rightValue": true, "operator": {"type": "boolean", "operation": "true"}}],
+        "combinator": "and"
+      }, "options": {}},
+      "id": "b4", "name": "Değişti mi?", "type": "n8n-nodes-base.if", "typeVersion": 2.2, "position": [660, 0]
+    },
+    {
+      "parameters": {"chatId": "BURAYA_TELEGRAM_CHAT_ID", "additionalFields": {"text": "=🚨 Rakyip değişim algılandı!\nHash: {{ $json.hash }} (önceki: {{ $json.onceki }})"}},
+      "id": "b5", "name": "Telegram Uyarı", "type": "n8n-nodes-base.telegram", "typeVersion": 1.2, "position": [880, -50], "credentials": {"telegramApi": {"id": null, "name": "Telegram bot bağla"}}
+    },
+    {
+      "parameters": {
+        "resource": "message", "operation": "send",
+        "toUser": {"__rl": true, "value": "patron@firma.com", "mode": "name"},
+        "subject": "🚨 Rakip siteniz değişti",
+        "emailType": "text",
+        "message": "=Rakip sitesinde değişiklik algılandı: {{ $json.hash }}",
+        "options": {}
+      },
+      "id": "b6", "name": "E-posta Uyarı", "type": "n8n-nodes-base.gmail", "typeVersion": 2.1, "position": [880, 100], "credentials": {"gmailOAuth2": {"id": null, "name": "Gmail hesabını bağla"}}
+    }
+  ],
+  "connections": {
+    "Her Gün 09:00": {"main": [[{"node": "Rakip Sitesi", "type": "main", "index": 0}]]},
+    "Rakip Sitesi": {"main": [[{"node": "Değişim Kontrol", "type": "main", "index": 0}]]},
+    "Değişim Kontrol": {"main": [[{"node": "Değişti mi?", "type": "main", "index": 0}]]},
+    "Değişti mi?": {"main": [[{"node": "Telegram Uyarı", "type": "main", "index": 0}, {"node": "E-posta Uyarı", "type": "main", "index": 0}], []]}
+  },
+  "settings": {"executionOrder": "v1"},
+  "staticData": null,
+  "pinData": {}
+}
